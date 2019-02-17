@@ -64,6 +64,7 @@ extern crate futures_cpupool;
 extern crate libc;
 extern crate memmap;
 extern crate mio;
+extern crate parking_lot;
 extern crate rand;
 extern crate tokio;
 
@@ -787,7 +788,7 @@ mod tests {
     }
 
     struct MemoryBlock {
-        bytes: sync::RwLock<memmap::MmapMut>,
+        bytes: parking_lot::RwLock<memmap::MmapMut>,
     }
 
     impl MemoryBlock {
@@ -798,7 +799,7 @@ mod tests {
             MemoryBlock {
                 // for real uses, we'll have a buffer pool with locks associated with individual pages
                 // simplifying the logic here for test case development
-                bytes: sync::RwLock::new(map),
+                bytes: parking_lot::RwLock::new(map),
             }
         }
     }
@@ -825,13 +826,13 @@ mod tests {
 
     impl convert::AsRef<[u8]> for MemoryHandle {
         fn as_ref(&self) -> &[u8] {
-            unsafe { mem::transmute(&(*self.block.bytes.read().unwrap())[..]) }
+            unsafe { mem::transmute(&(*self.block.bytes.read())[..]) }
         }
     }
 
     impl convert::AsMut<[u8]> for MemoryHandle {
         fn as_mut(&mut self) -> &mut [u8] {
-            unsafe { mem::transmute(&mut (*self.block.bytes.write().unwrap())[..]) }
+            unsafe { mem::transmute(&mut (*self.block.bytes.write())[..]) }
         }
     }
 
