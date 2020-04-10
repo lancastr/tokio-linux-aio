@@ -9,6 +9,7 @@ license = "MIT"
 readme = "README.md"
 categories = ["api-bindings", "asynchronous", "external-ffi-bindings", "filesystem", "os::unix-apis"]
 keywords = ["async", "non-blocking", "futures", "linux", "aio"]
+edition = "2018"
 
 [badges]
 travis-ci = { repository = "hmwill/tokio-linux-aio" }

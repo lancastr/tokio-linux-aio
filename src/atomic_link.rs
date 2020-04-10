@@ -1,6 +1,6 @@
 use std::fmt;
 use std::ptr::NonNull;
-use std::sync::atomic::AtomicPtr;
+
 
 use crossbeam::atomic::AtomicCell;
 use intrusive_collections::{DefaultLinkOps, LinkOps};
