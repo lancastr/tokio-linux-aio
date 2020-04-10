@@ -67,6 +67,9 @@ extern crate mio;
 extern crate parking_lot;
 extern crate rand;
 extern crate tokio;
+extern crate crossbeam;
+#[macro_use]
+extern crate intrusive_collections;
 
 use std::convert;
 use std::error;
@@ -82,11 +85,14 @@ use libc::{c_long, c_void, mlock};
 
 use futures::Future;
 use ops::Deref;
+use crate::atomic_link::AtomicLink;
+use intrusive_collections::LinkedList;
 
 // local modules
 mod aio;
 mod eventfd;
 mod sync;
+mod atomic_link;
 
 // -----------------------------------------------------------------------------------------------
 // Bindings for Linux AIO start here
@@ -109,13 +115,15 @@ struct IocbInfo {
     // the number of bytes to be transferred, if applicable
     len: u64,
 
-    // flags to provide additional parameters 
+    // flags to provide additional parameters
     flags: u32,
 }
 
 // State information that is associated with an I/O request that is currently in flight.
 #[derive(Debug)]
 struct RequestState {
+    link: AtomicLink,
+
     // Linux kernal I/O control block which can be submitted to io_submit
     request: aio::iocb,
 
@@ -125,6 +133,8 @@ struct RequestState {
     // We have both sides of a oneshot channel here
     completed_sender: Option<futures::sync::oneshot::Sender<aio_bindings::__s64>>,
 }
+
+intrusive_adapter!(RequestStateAdapter = Box<RequestState>: RequestState { link: AtomicLink });
 
 // Common data structures for futures returned by `AioContext`.
 struct AioBaseFuture {
@@ -159,7 +169,7 @@ impl AioBaseFuture {
                     let mut guard = self.context.capacity.write();
                     match guard {
                         Ok(ref mut guard) => {
-                            self.state = guard.state.pop();
+                            self.state = guard.state.pop_front();
                         }
                         Err(_) => panic!("TODO: Figure out how to handle this kind of error"),
                     }
@@ -219,7 +229,7 @@ impl AioBaseFuture {
         // Release the kernel queue slot and the state variable that we just processed
         match self.context.capacity.write() {
             Ok(ref mut guard) => {
-                guard.state.push(self.state.take().unwrap());
+                guard.state.push_back(self.state.take().unwrap());
             }
             Err(_) => panic!("TODO: Figure out how to handle this kind of error"),
         }
@@ -428,19 +438,20 @@ impl futures::Future for AioPollFuture {
 #[derive(Debug)]
 struct Capacity {
     // pre-allocated eventfds and iocbs that are associated with scheduled I/O requests
-    state: Vec<Box<RequestState>>,
+    state: LinkedList<RequestStateAdapter>,
 }
 
 impl Capacity {
     fn new(nr: usize) -> Result<Capacity, io::Error> {
-        let mut state = Vec::with_capacity(nr);
+        let mut state = LinkedList::new(RequestStateAdapter::new());
 
         // using a for loop to properly handle the error case
         // range map collect would only allow for using unwrap(), thereby turning an error into a panic
         for _ in 0..nr {
             let (_, receiver) = futures::sync::oneshot::channel();
 
-            state.push(Box::new(RequestState {
+            state.push_back(Box::new(RequestState {
+                link: Default::default(),
                 request: unsafe { mem::zeroed() },
                 completed_receiver: receiver,
                 completed_sender: None,
@@ -664,7 +675,7 @@ impl AioContext {
     }
 
     /// Initiate an asynchronous sync operation on the given file descriptor.
-    /// 
+    ///
     /// __Caveat:__ While this operation is defined in the ABI, this command is known to
     /// fail with an invalid argument error (`EINVAL`) in many, if not all, cases. You are kind of
     /// on your own.
