@@ -1,32 +1,11 @@
-// ===============================================================================================
-// Copyright (c) 2018 Hans-Martin Will
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
-// ===============================================================================================
-
 pub use libc::c_long;
 
 // Relevant symbols from the native bindings exposed via aio-bindings
-pub use aio_bindings::{aio_context_t, io_event, iocb, syscall, timespec, 
-                       __NR_io_destroy, __NR_io_getevents, __NR_io_setup, __NR_io_submit, 
-                       IOCB_CMD_PREAD, IOCB_CMD_PWRITE, IOCB_CMD_FSYNC, IOCB_CMD_FDSYNC, IOCB_FLAG_RESFD, 
-                       RWF_DSYNC, RWF_SYNC};
+pub use aio_bindings::{
+    __NR_io_destroy, __NR_io_getevents, __NR_io_setup, __NR_io_submit, aio_context_t, io_event,
+    iocb, syscall, timespec, IOCB_CMD_FDSYNC, IOCB_CMD_FSYNC, IOCB_CMD_PREAD, IOCB_CMD_PWRITE,
+    IOCB_FLAG_RESFD, RWF_DSYNC, RWF_SYNC,
+};
 
 // -----------------------------------------------------------------------------------------------
 // Inline functions that wrap the kernel calls for the entry points corresponding to Linux

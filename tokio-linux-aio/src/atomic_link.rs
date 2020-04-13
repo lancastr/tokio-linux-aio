@@ -1,15 +1,18 @@
+use std::cell::Cell;
 use std::fmt;
 use std::ptr::NonNull;
 
-
-use crossbeam::atomic::AtomicCell;
 use intrusive_collections::{DefaultLinkOps, LinkOps};
 use intrusive_collections::linked_list::LinkedListOps;
+use lock_api::RawMutex;
 
 pub struct AtomicLink {
-    next: AtomicCell<Option<NonNull<AtomicLink>>>,
-    prev: AtomicCell<Option<NonNull<AtomicLink>>>,
+    locked: parking_lot::RawMutex,
+    next: Cell<Option<NonNull<AtomicLink>>>,
+    prev: Cell<Option<NonNull<AtomicLink>>>,
 }
+
+unsafe impl Sync for AtomicLink {}
 
 const UNLINKED_MARKER: Option<NonNull<AtomicLink>> =
     unsafe { Some(NonNull::new_unchecked(1 as *mut AtomicLink)) };
@@ -19,28 +22,16 @@ impl AtomicLink {
     #[inline]
     pub const fn new() -> AtomicLink {
         AtomicLink {
-            next: AtomicCell::new(UNLINKED_MARKER),
-            prev: AtomicCell::new(UNLINKED_MARKER),
+            locked: RawMutex::INIT,
+            next: Cell::new(UNLINKED_MARKER),
+            prev: Cell::new(UNLINKED_MARKER),
         }
     }
 
     /// Checks whether the `Link` is linked into a `LinkedList`.
     #[inline]
     pub fn is_linked(&self) -> bool {
-        self.next.load() != UNLINKED_MARKER
-    }
-
-    /// Forcibly unlinks an object from a `LinkedList`.
-    ///
-    /// # Safety
-    ///
-    /// It is undefined behavior to call this function while still linked into a
-    /// `LinkedList`. The only situation where this function is useful is
-    /// after calling `fast_clear` on a `LinkedList`, since this clears
-    /// the collection without marking the nodes as unlinked.
-    #[inline]
-    pub unsafe fn force_unlink(&self) {
-        self.next.store(UNLINKED_MARKER);
+        self.next.get() != UNLINKED_MARKER
     }
 }
 
@@ -95,35 +86,55 @@ pub struct AtomicLinkOps;
 unsafe impl LinkOps for AtomicLinkOps {
     type LinkPtr = NonNull<AtomicLink>;
 
+    // The key point is that the link is locked when it is inserted
+    // into the intrusive collection and unlocked when it is removed.
+    // When the lock is held, accessing prev and next does not require
+    // any synchronization.
+
     #[inline]
-    unsafe fn is_linked(&self, ptr: Self::LinkPtr) -> bool {
-        ptr.as_ref().is_linked()
+    unsafe fn acquire_link(&mut self, ptr: Self::LinkPtr) -> bool {
+        ptr.as_ref().locked.lock();
+
+        let r = if ptr.as_ref().is_linked() {
+            false
+        } else {
+            ptr.as_ref().next.set(None);
+            true
+        };
+
+        ptr.as_ref().locked.unlock();
+
+        r
     }
 
     #[inline]
-    unsafe fn mark_unlinked(&mut self, ptr: Self::LinkPtr) {
-        ptr.as_ref().next.store(UNLINKED_MARKER);
+    unsafe fn release_link(&mut self, ptr: Self::LinkPtr) {
+        ptr.as_ref().locked.lock();
+
+        ptr.as_ref().next.set(UNLINKED_MARKER);
+
+        ptr.as_ref().locked.unlock();
     }
 }
 
 unsafe impl LinkedListOps for AtomicLinkOps {
     #[inline]
     unsafe fn next(&self, ptr: Self::LinkPtr) -> Option<Self::LinkPtr> {
-        ptr.as_ref().next.load()
+        ptr.as_ref().next.get()
     }
 
     #[inline]
     unsafe fn prev(&self, ptr: Self::LinkPtr) -> Option<Self::LinkPtr> {
-        ptr.as_ref().prev.load()
+        ptr.as_ref().prev.get()
     }
 
     #[inline]
     unsafe fn set_next(&mut self, ptr: Self::LinkPtr, next: Option<Self::LinkPtr>) {
-        ptr.as_ref().next.store(next);
+        ptr.as_ref().next.set(next);
     }
 
     #[inline]
     unsafe fn set_prev(&mut self, ptr: Self::LinkPtr, prev: Option<Self::LinkPtr>) {
-        ptr.as_ref().prev.store(prev);
+        ptr.as_ref().prev.set(prev);
     }
 }

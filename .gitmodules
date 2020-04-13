@@ -1,3 +1,0 @@
-[submodule "deps/intrusive-rs"]
-	path = deps/intrusive-rs
-	url = https://github.com/Amanieu/intrusive-rs.git
